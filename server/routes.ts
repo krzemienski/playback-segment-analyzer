@@ -14,10 +14,15 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024 * 1024, // 10GB
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/mkv'];
-    if (allowedTypes.includes(file.mimetype)) {
+    const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/mkv', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    // Check both MIME type and file extension
+    if (allowedTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
       cb(null, true);
     } else {
+      console.error(`File rejected: ${file.originalname}, mimetype: ${file.mimetype}, extension: ${fileExtension}`);
       cb(new Error('Invalid file type. Only MP4, AVI, MOV, and MKV files are allowed.'));
     }
   }
@@ -104,7 +109,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
     try {
+      console.log('Upload request received');
+      console.log('File:', req.file);
+      console.log('Body:', req.body);
+      
       if (!req.file) {
+        console.error('No file in request');
         return res.status(400).json({ error: 'No video file provided' });
       }
 
@@ -112,10 +122,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filename: req.file.filename,
         originalName: req.file.originalname,
         fileSize: req.file.size,
-        format: path.extname(req.file.originalname).substring(1),
+        format: path.extname(req.file.originalname).substring(1).toLowerCase(),
         status: 'uploaded',
         uploadedBy: null, // TODO: Get from authenticated user
       });
+      
+      console.log('Video data to insert:', videoData);
 
       const video = await storage.createVideo(videoData);
       
@@ -144,10 +156,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ video, job });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading video:', error);
-      res.status(500).json({ error: 'Failed to upload video' });
+      if (error instanceof z.ZodError) {
+        console.error('Schema validation error:', error.errors);
+        return res.status(400).json({ error: 'Invalid video data', details: error.errors });
+      }
+      res.status(500).json({ error: error.message || 'Failed to upload video' });
     }
+  });
+  
+  // Add error handler for multer errors
+  app.use((error: any, req: any, res: any, next: any) => {
+    if (error instanceof multer.MulterError) {
+      console.error('Multer error:', error);
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10GB.' });
+      }
+      return res.status(400).json({ error: error.message });
+    } else if (error) {
+      console.error('Upload error:', error);
+      return res.status(400).json({ error: error.message || 'Upload failed' });
+    }
+    next();
   });
 
   // Job routes
