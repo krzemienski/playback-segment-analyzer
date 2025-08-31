@@ -40,7 +40,7 @@ export default function Sidebar() {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Video className="text-2xl text-sidebar-primary" data-testid="logo-icon" />
+            <Video className="h-8 w-8 text-sidebar-primary" data-testid="logo-icon" />
             {!collapsed && (
               <span className="text-xl font-semibold text-sidebar-foreground" data-testid="logo-text">
                 Scene Detect
@@ -66,8 +66,7 @@ export default function Sidebar() {
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
           {navigation.map((item) => {
-            const isActive = location === item.href || 
-              (item.href === "/dashboard" && location === "/");
+            const isActive = location === item.href;
             
             return (
               <li key={item.name}>
@@ -77,7 +76,7 @@ export default function Sidebar() {
                     className={cn(
                       "w-full justify-start px-3 py-2 transition-colors",
                       isActive 
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground" 
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground" 
                         : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sidebar-foreground"
                     )}
                     data-testid={`nav-${item.name.toLowerCase()}`}

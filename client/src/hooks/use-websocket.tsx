@@ -18,6 +18,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectAttemptsRef = useRef(0);
 
   const connect = () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -27,6 +28,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     ws.current.onopen = () => {
       setIsConnected(true);
+      reconnectAttemptsRef.current = 0;
       console.log("WebSocket connected");
     };
 
@@ -34,10 +36,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       setIsConnected(false);
       console.log("WebSocket disconnected");
       
-      // Attempt to reconnect after 3 seconds
+      // Exponential backoff for reconnection
+      const timeout = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+      reconnectAttemptsRef.current++;
+      
       reconnectTimeoutRef.current = setTimeout(() => {
+        console.log('Attempting to reconnect WebSocket...');
         connect();
-      }, 3000);
+      }, timeout);
     };
 
     ws.current.onerror = (error) => {

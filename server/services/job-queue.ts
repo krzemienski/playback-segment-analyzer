@@ -3,6 +3,13 @@ import { redis } from "./redis";
 import { storage } from "../storage";
 import { videoProcessor } from "../services/video-processor";
 
+// Broadcast function will be injected by routes.ts
+let broadcastFunction: ((data: any) => void) | null = null;
+
+export function setBroadcast(broadcast: (data: any) => void) {
+  broadcastFunction = broadcast;
+}
+
 // Create job queue
 export const jobQueue = new Queue("video processing", {
   redis: {
@@ -28,19 +35,41 @@ jobQueue.process("process-video", async (job) => {
     let result;
     switch (type) {
       case "scene_detection":
-        result = await videoProcessor.detectScenes(filename, (progress: number) => {
+        result = await videoProcessor.detectScenes(filename, async (progress: number) => {
           // Update progress in real-time
-          storage.updateJob(jobId, { progress });
+          await storage.updateJob(jobId, { progress });
+          // Broadcast progress update
+          if (broadcastFunction) {
+            const job = await storage.getJob(jobId);
+            broadcastFunction({
+              type: 'job_progress',
+              data: { job, progress }
+            });
+          }
         });
         break;
       case "preview_generation":
-        result = await videoProcessor.generatePreviews(filename, (progress: number) => {
-          storage.updateJob(jobId, { progress });
+        result = await videoProcessor.generatePreviews(filename, async (progress: number) => {
+          await storage.updateJob(jobId, { progress });
+          if (broadcastFunction) {
+            const job = await storage.getJob(jobId);
+            broadcastFunction({
+              type: 'job_progress',
+              data: { job, progress }
+            });
+          }
         });
         break;
       case "thumbnail_extraction":
-        result = await videoProcessor.extractThumbnails(filename, (progress: number) => {
-          storage.updateJob(jobId, { progress });
+        result = await videoProcessor.extractThumbnails(filename, async (progress: number) => {
+          await storage.updateJob(jobId, { progress });
+          if (broadcastFunction) {
+            const job = await storage.getJob(jobId);
+            broadcastFunction({
+              type: 'job_progress',
+              data: { job, progress }
+            });
+          }
         });
         break;
       default:
@@ -54,6 +83,15 @@ jobQueue.process("process-video", async (job) => {
       completedAt: new Date(),
       data: result 
     });
+    
+    // Broadcast completion
+    if (broadcastFunction) {
+      const job = await storage.getJob(jobId);
+      broadcastFunction({
+        type: 'job_completed',
+        data: { job, result }
+      });
+    }
 
     // Update video status
     await storage.updateVideo(videoId, { status: "completed" });
@@ -68,6 +106,15 @@ jobQueue.process("process-video", async (job) => {
       error: error instanceof Error ? error.message : "Unknown error",
       completedAt: new Date() 
     });
+    
+    // Broadcast failure
+    if (broadcastFunction) {
+      const job = await storage.getJob(jobId);
+      broadcastFunction({
+        type: 'job_failed',
+        data: { job, error: error instanceof Error ? error.message : "Unknown error" }
+      });
+    }
 
     // Update video status
     await storage.updateVideo(videoId, { status: "failed" });

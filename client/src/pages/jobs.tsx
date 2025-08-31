@@ -1,19 +1,35 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import JobTable from "@/components/jobs/job-table";
 import { useToast } from "@/hooks/use-toast";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { Activity, CheckCircle, XCircle, Clock } from "lucide-react";
 
 export default function Jobs() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isConnected, lastMessage } = useWebSocket();
 
   const { data: jobs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/jobs"],
-    refetchInterval: 2000, // Refresh every 2 seconds for real-time updates
+    refetchInterval: 5000, // Reduced frequency since we have WebSocket updates
   });
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (lastMessage) {
+      const messageTypes = ['job_created', 'job_progress', 'job_completed', 'job_failed', 'job_cancelled', 'job_retried'];
+      if (messageTypes.includes(lastMessage.type)) {
+        // Invalidate the query to refresh job list
+        queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      }
+    }
+  }, [lastMessage, queryClient]);
 
   const cancelJobMutation = useMutation({
     mutationFn: (jobId: string) => 
@@ -63,10 +79,21 @@ export default function Jobs() {
     <div className="p-6 space-y-6" data-testid="jobs-page">
       <Card>
         <CardHeader>
-          <CardTitle>Job Queue Management</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Monitor and manage video processing jobs
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Job Queue Management</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Monitor and manage video processing jobs
+              </p>
+            </div>
+            <Badge variant={isConnected ? 'default' : 'destructive'} data-testid="ws-connected">
+              {isConnected ? (
+                <><Activity className="h-3 w-3 mr-1" /> Live</>
+              ) : (
+                <><XCircle className="h-3 w-3 mr-1" /> Disconnected</>
+              )}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

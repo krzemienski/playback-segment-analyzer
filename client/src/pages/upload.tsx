@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import UploadZone from "@/components/video/upload-zone";
 import { useToast } from "@/hooks/use-toast";
-import { Video, Check, Play } from "lucide-react";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { Video, Check, Play, Settings2, X } from "lucide-react";
 
 interface UploadItem {
   file: File;
@@ -18,26 +22,69 @@ interface UploadItem {
 
 export default function Upload() {
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  const [config, setConfig] = useState({
+    threshold: 0.3,
+    minSceneLength: 1.0,
+    algorithm: 'content_detect'
+  });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { lastMessage } = useWebSocket();
+
+  // Handle WebSocket messages for real-time job progress
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'job_progress') {
+      const job = lastMessage.data?.job;
+      if (job) {
+        setUploadQueue(prev => prev.map(item => {
+          if (item.jobId === job.id) {
+            return { ...item, progress: job.progress || item.progress };
+          }
+          return item;
+        }));
+      }
+    }
+  }, [lastMessage]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('video', file);
+      formData.append('config', JSON.stringify(config));
 
-      return fetch('/api/videos/upload', {
-        method: 'POST',
-        body: formData,
-      }).then(res => {
-        if (!res.ok) throw new Error('Upload failed');
-        return res.json();
+      // Simulate upload progress using XMLHttpRequest for better progress tracking
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            setUploadQueue(prev => prev.map(item => 
+              item.file === file 
+                ? { ...item, progress }
+                : item
+            ));
+          }
+        });
+        
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve(JSON.parse(xhr.responseText));
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        
+        xhr.open('POST', '/api/videos/upload');
+        xhr.send(formData);
       });
     },
-    onSuccess: (data, file) => {
+    onSuccess: (data: any, file) => {
       setUploadQueue(prev => prev.map(item => 
         item.file === file 
-          ? { ...item, status: "completed", progress: 100, videoId: data.video.id, jobId: data.job.id }
+          ? { ...item, status: "completed", progress: 100, videoId: data.video?.id, jobId: data.job?.id }
           : item
       ));
       
@@ -108,6 +155,79 @@ export default function Upload() {
       <Card>
         <CardContent className="p-8">
           <UploadZone onFilesSelected={handleFilesSelected} />
+        </CardContent>
+      </Card>
+
+      {/* Configuration Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Settings2 className="h-5 w-5 mr-2" />
+            Detection Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="threshold">Detection Threshold</Label>
+              <Input
+                id="threshold"
+                type="number"
+                min="0.1"
+                max="1.0"
+                step="0.1"
+                value={config.threshold}
+                onChange={(e) => setConfig({
+                  ...config,
+                  threshold: parseFloat(e.target.value)
+                })}
+                data-testid="threshold-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lower values detect more scenes
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="minScene">Min Scene Length (seconds)</Label>
+              <Input
+                id="minScene"
+                type="number"
+                min="0.5"
+                max="10"
+                step="0.5"
+                value={config.minSceneLength}
+                onChange={(e) => setConfig({
+                  ...config,
+                  minSceneLength: parseFloat(e.target.value)
+                })}
+                data-testid="min-scene-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum duration for a scene
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="algorithm">Detection Algorithm</Label>
+              <Select
+                value={config.algorithm}
+                onValueChange={(value) => setConfig({ ...config, algorithm: value })}
+              >
+                <SelectTrigger data-testid="algorithm-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="content_detect">Content Detection</SelectItem>
+                  <SelectItem value="threshold_detect">Threshold Detection</SelectItem>
+                  <SelectItem value="adaptive_detect">Adaptive Detection</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Algorithm for scene detection
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
 import { insertVideoSchema, insertJobSchema } from "@shared/schema";
-import { jobQueue, getWorkerStats } from "./services/job-queue";
+import { jobQueue, getWorkerStats, setBroadcast } from "./services/job-queue";
 import { z } from "zod";
 
 const upload = multer({
@@ -57,6 +57,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
   }
+  
+  // Inject broadcast function into job queue for real-time updates
+  setBroadcast(broadcast);
 
   // Dashboard stats
   app.get('/api/dashboard/stats', async (req, res) => {
