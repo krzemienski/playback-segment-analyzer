@@ -7,33 +7,11 @@ import { storage } from "./storage";
 import { insertVideoSchema, insertJobSchema } from "@shared/schema";
 import { jobQueue, getWorkerStats, setBroadcast } from "./services/job-queue";
 import { z } from "zod";
+import { ObjectStorageService, ObjectNotFoundError } from './objectStorage';
+import { ObjectPermission } from './objectAcl';
 
-const upload = multer({
-  dest: 'uploads/',
-  limits: {
-    fileSize: 10 * 1024 * 1024 * 1024, // 10GB
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      'video/mp4', 'video/avi', 'video/mov', 'video/mkv', 
-      'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
-      'application/octet-stream' // Some browsers send this for video files
-    ];
-    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv'];
-    const fileExtension = path.extname(file.originalname).toLowerCase();
-    
-    // Check file extension first (more reliable)
-    if (allowedExtensions.includes(fileExtension)) {
-      cb(null, true);
-    } else if (allowedTypes.includes(file.mimetype)) {
-      // Check MIME type as fallback
-      cb(null, true);
-    } else {
-      console.error(`File rejected: ${file.originalname}, mimetype: ${file.mimetype}, extension: ${fileExtension}`);
-      cb(new Error('Invalid file type. Only MP4, AVI, MOV, and MKV files are allowed.'));
-    }
-  }
-});
+// Multer is no longer needed for object storage uploads
+// We'll use presigned URLs instead
 
 interface WebSocketClient extends WebSocket {
   id: string;
@@ -114,25 +92,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
+  // Get presigned URL for video upload
+  app.post('/api/videos/upload-url', async (req, res) => {
     try {
-      console.log('Upload endpoint hit');
-      console.log('File received:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file');
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      console.error('Error getting upload URL:', error);
+      res.status(500).json({ error: error.message || 'Failed to get upload URL' });
+    }
+  });
+
+  // Process uploaded video metadata
+  app.post('/api/videos/process-upload', async (req, res) => {
+    try {
+      const { uploadURL, filename, fileSize } = req.body;
       
-      if (!req.file) {
-        return res.status(400).json({ error: 'No video file provided' });
+      if (!uploadURL || !filename || !fileSize) {
+        return res.status(400).json({ error: 'Missing required fields' });
       }
 
       // Extract format from filename
-      let format = path.extname(req.file.originalname).substring(1).toLowerCase();
-      if (!format) {
-        format = 'mp4'; // Default format if extension is missing
+      let format = path.extname(filename).substring(1).toLowerCase();
+      if (!format || !['mp4', 'avi', 'mov', 'mkv'].includes(format)) {
+        format = 'mp4'; // Default format if extension is missing or unknown
       }
 
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        uploadURL,
+        {
+          owner: 'system', // TODO: Get from authenticated user
+          visibility: 'private', // Videos are private by default
+        }
+      );
+
       const videoData = insertVideoSchema.parse({
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        fileSize: req.file.size,
+        filename: objectPath,
+        originalName: filename,
+        fileSize: fileSize,
         format: format,
         status: 'uploaded',
         uploadedBy: null, // TODO: Get from authenticated user
@@ -145,7 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         videoId: video.id,
         type: 'scene_detection',
         status: 'queued',
-        data: { filename: req.file.filename, originalName: req.file.originalname },
+        data: { filename: objectPath, originalName: filename },
       });
 
       const job = await storage.createJob(jobData);
@@ -154,7 +153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await jobQueue.add('process-video', {
         jobId: job.id,
         videoId: video.id,
-        filename: req.file.filename,
+        filename: objectPath,
         type: 'scene_detection',
       });
 
@@ -164,29 +163,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { video, job },
       });
 
-      console.log('Upload successful:', { videoId: video.id, jobId: job.id });
+      console.log('Upload processed:', { videoId: video.id, jobId: job.id, objectPath });
       res.json({ video, job });
     } catch (error: any) {
-      console.error('Error uploading video:', error);
+      console.error('Error processing upload:', error);
       if (error instanceof z.ZodError) {
         console.error('Schema validation error:', error.errors);
         return res.status(400).json({ error: 'Invalid video data', details: error.errors });
       }
-      res.status(500).json({ error: error.message || 'Failed to upload video' });
+      res.status(500).json({ error: error.message || 'Failed to process upload' });
     }
   });
 
-  // Handle multer errors
-  app.use((error: any, req: any, res: any, next: any) => {
-    if (error instanceof multer.MulterError) {
-      if (error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File too large. Maximum size is 10GB.' });
+  // Serve private video files from object storage
+  app.get('/objects/:objectPath(*)', async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path,
+      );
+      // For now, allow access without authentication
+      // TODO: Implement proper authentication
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error('Error accessing object:', error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
       }
-      return res.status(400).json({ error: error.message });
-    } else if (error && error.message && error.message.includes('Invalid file type')) {
-      return res.status(400).json({ error: error.message });
+      return res.sendStatus(500);
     }
-    next(error);
+  });
+
+  // Serve public objects (thumbnails, etc.)
+  app.get('/public-objects/:filePath(*)', async (req, res) => {
+    const filePath = req.params.filePath;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error('Error searching for public object:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   });
   
 
