@@ -1,0 +1,29 @@
+WebSocket connected
+Error uploading file: TypeError {}
+H@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/:30:30293
+insertSync@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/:10:30355
+@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/:10:31806
+Method is not a valid HTTP token.
+@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/:4:42812
+@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/lib/queryClient.ts:9:26
+apiRequest@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/lib/queryClient.ts:8:34
+@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/pages/upload.tsx:40:45
+uploadFile@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/pages/upload.tsx:31:31
+@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/pages/upload.tsx:123:17
+forEach@[native code]
+handleFileSelect@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/src/pages/upload.tsx:103:18
+callCallback2@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:3674:27
+dispatchEvent@[native code]
+invokeGuardedCallbackDev@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:3699:37
+invokeGuardedCallback@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:3733:44
+invokeGuardedCallbackAndCatchFirstError@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:3736:38
+executeDispatch@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:7014:50
+processDispatchQueueItemsInOrder@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:7034:30
+processDispatchQueue@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:7043:45
+dispatchEventsForPlugins@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:7051:31
+batchedUpdates$1@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:18913:22
+batchedUpdates@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:3579:38
+dispatchEventForPluginEventSystem@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:7173:25
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:5478:46
+dispatchEvent@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:5472:92
+dispatchDiscreteEvent@https://7208db98-6b7e-4992-8189-71ace7ed0d36-00-2l4naevmiukhb.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WERSD76P.js:5449:26

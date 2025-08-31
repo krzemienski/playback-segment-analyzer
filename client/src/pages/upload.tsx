@@ -32,9 +32,8 @@ export default function UploadPage() {
 
     try {
       // Get presigned URL
-      const { uploadURL } = await apiRequest('/api/videos/upload-url', {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', '/api/videos/upload-url');
+      const { uploadURL } = await response.json();
 
       // Upload file directly to storage
       const xhr = new XMLHttpRequest();
@@ -69,16 +68,10 @@ export default function UploadPage() {
       ));
 
       // Process the upload on the server
-      await apiRequest('/api/videos/process-upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uploadURL,
-          filename: file.name,
-          fileSize: file.size,
-        }),
+      await apiRequest('POST', '/api/videos/process-upload', {
+        uploadURL,
+        filename: file.name,
+        fileSize: file.size,
       });
 
       // Update status to completed
