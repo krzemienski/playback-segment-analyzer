@@ -14,12 +14,19 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024 * 1024, // 10GB
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/mkv', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'];
+    const allowedTypes = [
+      'video/mp4', 'video/avi', 'video/mov', 'video/mkv', 
+      'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+      'application/octet-stream' // Some browsers send this for video files
+    ];
     const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv'];
     const fileExtension = path.extname(file.originalname).toLowerCase();
     
-    // Check both MIME type and file extension
-    if (allowedTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
+    // Check file extension first (more reliable)
+    if (allowedExtensions.includes(fileExtension)) {
+      cb(null, true);
+    } else if (allowedTypes.includes(file.mimetype)) {
+      // Check MIME type as fallback
       cb(null, true);
     } else {
       console.error(`File rejected: ${file.originalname}, mimetype: ${file.mimetype}, extension: ${fileExtension}`);
@@ -109,25 +116,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/videos/upload', upload.single('video'), async (req, res) => {
     try {
-      console.log('Upload request received');
-      console.log('File:', req.file);
-      console.log('Body:', req.body);
+      console.log('Upload endpoint hit');
+      console.log('File received:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'No file');
       
       if (!req.file) {
-        console.error('No file in request');
         return res.status(400).json({ error: 'No video file provided' });
+      }
+
+      // Extract format from filename
+      let format = path.extname(req.file.originalname).substring(1).toLowerCase();
+      if (!format) {
+        format = 'mp4'; // Default format if extension is missing
       }
 
       const videoData = insertVideoSchema.parse({
         filename: req.file.filename,
         originalName: req.file.originalname,
         fileSize: req.file.size,
-        format: path.extname(req.file.originalname).substring(1).toLowerCase(),
+        format: format,
         status: 'uploaded',
         uploadedBy: null, // TODO: Get from authenticated user
       });
-      
-      console.log('Video data to insert:', videoData);
 
       const video = await storage.createVideo(videoData);
       
@@ -155,6 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { video, job },
       });
 
+      console.log('Upload successful:', { videoId: video.id, jobId: job.id });
       res.json({ video, job });
     } catch (error: any) {
       console.error('Error uploading video:', error);
@@ -165,21 +175,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: error.message || 'Failed to upload video' });
     }
   });
-  
-  // Add error handler for multer errors
+
+  // Handle multer errors
   app.use((error: any, req: any, res: any, next: any) => {
     if (error instanceof multer.MulterError) {
-      console.error('Multer error:', error);
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: 'File too large. Maximum size is 10GB.' });
       }
       return res.status(400).json({ error: error.message });
-    } else if (error) {
-      console.error('Upload error:', error);
-      return res.status(400).json({ error: error.message || 'Upload failed' });
+    } else if (error && error.message && error.message.includes('Invalid file type')) {
+      return res.status(400).json({ error: error.message });
     }
-    next();
+    next(error);
   });
+  
 
   // Job routes
   app.get('/api/jobs', async (req, res) => {

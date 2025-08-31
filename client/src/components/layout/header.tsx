@@ -1,7 +1,8 @@
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { Plus } from "lucide-react";
+import { useRef } from "react";
 
 const pageConfig = {
   "/": {
@@ -35,12 +36,34 @@ const pageConfig = {
 };
 
 export default function Header() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isConnected } = useWebSocket();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const currentPage = pageConfig[location as keyof typeof pageConfig] || {
     title: "Scene Detection Platform",
     subtitle: "Professional video processing"
+  };
+
+  const handleQuickUpload = () => {
+    if (location !== '/upload') {
+      setLocation('/upload');
+    } else {
+      // If already on upload page, trigger file picker
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      // Navigate to upload page with the file
+      setLocation('/upload');
+      // We'll pass the file through a global event
+      window.dispatchEvent(new CustomEvent('quick-upload-files', { 
+        detail: { files: Array.from(files) } 
+      }));
+    }
   };
 
   return (
@@ -69,13 +92,24 @@ export default function Header() {
           </div>
           
           {/* Quick Upload Button */}
-          <Button 
-            className="bg-primary text-primary-foreground hover:opacity-90"
-            data-testid="quick-upload-button"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Quick Upload
-          </Button>
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="video/mp4,video/avi,video/mov,video/mkv,.mp4,.avi,.mov,.mkv"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button 
+              onClick={handleQuickUpload}
+              className="bg-primary text-primary-foreground hover:opacity-90"
+              data-testid="quick-upload-button"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Quick Upload
+            </Button>
+          </>
         </div>
       </div>
     </header>

@@ -35,6 +35,21 @@ export default function Upload() {
   const queryClient = useQueryClient();
   const { lastMessage } = useWebSocket();
 
+  // Listen for Quick Upload events
+  useEffect(() => {
+    const handleQuickUpload = (event: CustomEvent) => {
+      const files = event.detail.files as File[];
+      if (files && files.length > 0) {
+        handleFilesSelected(files);
+      }
+    };
+
+    window.addEventListener('quick-upload-files', handleQuickUpload as EventListener);
+    return () => {
+      window.removeEventListener('quick-upload-files', handleQuickUpload as EventListener);
+    };
+  }, []);
+
   // Handle WebSocket messages for real-time job progress
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'job_progress') {
@@ -56,34 +71,52 @@ export default function Upload() {
       formData.append('video', file);
       formData.append('config', JSON.stringify(config));
 
-      // Simulate upload progress using XMLHttpRequest for better progress tracking
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100);
-            setUploadQueue(prev => prev.map(item => 
-              item.file === file 
-                ? { ...item, progress }
-                : item
-            ));
-          }
+      // Simulate progress for large files
+      let progressInterval: NodeJS.Timeout | null = null;
+      
+      // Start simulated progress
+      let simulatedProgress = 0;
+      progressInterval = setInterval(() => {
+        simulatedProgress = Math.min(simulatedProgress + Math.random() * 15, 90);
+        setUploadQueue(prev => prev.map(item => 
+          item.file === file 
+            ? { ...item, progress: Math.round(simulatedProgress) }
+            : item
+        ));
+      }, 500);
+
+      try {
+        // Use fetch API instead of XMLHttpRequest
+        const response = await fetch('/api/videos/upload', {
+          method: 'POST',
+          body: formData,
         });
+
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || 'Upload failed');
+        }
+
+        const data = await response.json();
         
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            resolve(JSON.parse(xhr.responseText));
-          } else {
-            reject(new Error('Upload failed'));
-          }
-        };
+        // Set progress to 100% on success
+        setUploadQueue(prev => prev.map(item => 
+          item.file === file 
+            ? { ...item, progress: 100 }
+            : item
+        ));
         
-        xhr.onerror = () => reject(new Error('Upload failed'));
-        
-        xhr.open('POST', '/api/videos/upload');
-        xhr.send(formData);
-      });
+        return data;
+      } catch (error) {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+        throw error;
+      }
     },
     onSuccess: (data: any, file) => {
       setUploadQueue(prev => prev.map(item => 
@@ -180,11 +213,39 @@ export default function Upload() {
     }
   };
 
+  // Create a test file for debugging
+  const createTestFile = () => {
+    const testContent = new Blob(
+      ['Test video content for debugging'], 
+      { type: 'video/mp4' }
+    );
+    const testFile = new File([testContent], 'test-video.mp4', { 
+      type: 'video/mp4',
+      lastModified: Date.now()
+    });
+    handleFilesSelected([testFile]);
+    toast({
+      title: "Test file created",
+      description: "A small test file has been added to the upload queue.",
+    });
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8" data-testid="upload-page">
       {/* Upload Zone */}
       <Card>
         <CardContent className="p-8">
+          {/* Debug button for testing */}
+          <div className="mb-4 flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={createTestFile}
+              data-testid="create-test-file"
+            >
+              Create Test File (Debug)
+            </Button>
+          </div>
           <UploadZone 
             onFilesSelected={handleFilesSelected} 
             maxFiles={batchMode ? 20 : 5}
