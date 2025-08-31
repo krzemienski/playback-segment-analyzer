@@ -1,0 +1,1685 @@
+# COMPREHENSIVE SCENE DETECTION UI IMPLEMENTATION GUIDE
+## Task-Systematic Prompt for Production-Ready Development
+
+---
+
+## 🎯 PROJECT OBJECTIVE
+Build a complete, production-ready front-end UI for a scene detection system with real backend integration, database persistence, job queue management, and live testing at every stage. This implementation must be systematic, gated, and verified using Puppeteer MCP for visual confirmation.
+
+---
+
+## 📋 MANDATORY PRE-IMPLEMENTATION REQUIREMENTS
+
+### Phase 0: Complete Codebase Analysis (CRITICAL - DO NOT SKIP)
+**BEFORE ANY WORK BEGINS, YOU MUST:**
+
+1. **Analyze EVERY existing file in the project**
+   - [ ] Locate and read ALL Docker Compose files
+   - [ ] Analyze EVERY API endpoint definition
+   - [ ] Read EVERY CLI tool script
+   - [ ] Examine ALL configuration files
+   - [ ] Review EVERY existing service definition
+   - [ ] Document ALL environment variables
+   - [ ] Map ALL network configurations
+   - [ ] Identify ALL volume mounts
+
+2. **Document the complete existing architecture**
+   - [ ] Create comprehensive service dependency map
+   - [ ] Document all API contracts (request/response formats)
+   - [ ] List all CLI commands and their parameters
+   - [ ] Map all data flows between services
+   - [ ] Document all existing ports and protocols
+
+3. **Save complete context to memory MCP**
+   - [ ] Store full project structure analysis
+   - [ ] Save all API endpoint signatures
+   - [ ] Document all configuration patterns
+   - [ ] Record all service interactions
+
+**GATE 0: DO NOT PROCEED until every file is analyzed and context is saved**
+
+---
+
+## 🏗️ PHASE 1: INFRASTRUCTURE FOUNDATION
+
+### Step 1-10: Docker Environment Setup
+
+**1.1: Analyze Current Docker Compose**
+```yaml
+# Verify and document existing services:
+- [ ] Read docker-compose.yml completely
+- [ ] Document each existing service
+- [ ] Map all network definitions
+- [ ] List all volume definitions
+- [ ] Record all environment variables
+```
+
+**1.2: Extend Docker Compose with New Services**
+```yaml
+version: '3.8'
+
+services:
+  # Add these new services to existing compose:
+  
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: scene_detection
+      POSTGRES_USER: scene_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scene_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+      NEXT_PUBLIC_WS_URL: ws://api:8000/ws
+    depends_on:
+      - api
+      - postgres
+      - redis
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+  
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://scene_user:${DB_PASSWORD}@postgres:5432/scene_detection
+      REDIS_URL: redis://redis:6379
+      VIDEO_STORAGE_PATH: /videos
+    volumes:
+      - ${HOST_VIDEO_PATH}:/videos
+      - ./api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  
+  worker:
+    build: ./worker
+    environment:
+      DATABASE_URL: postgresql://scene_user:${DB_PASSWORD}@postgres:5432/scene_detection
+      REDIS_URL: redis://redis:6379
+      VIDEO_STORAGE_PATH: /videos
+      PREVIEW_OUTPUT_PATH: /previews
+    volumes:
+      - ${HOST_VIDEO_PATH}:/videos
+      - ./previews:/previews
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 2
+```
+
+**VERIFICATION GATE 1.1:**
+- [ ] Run `docker-compose config` to validate YAML
+- [ ] Use Puppeteer MCP to verify all services start correctly
+- [ ] Test health checks with `docker-compose ps`
+- [ ] Verify network connectivity between services
+
+### Step 11-20: Database Schema Implementation
+
+**1.3: Create Database Migrations**
+```sql
+-- Migration 001: Core Tables
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE videos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    filename VARCHAR(255) NOT NULL,
+    filepath TEXT NOT NULL,
+    file_size BIGINT,
+    duration_seconds FLOAT,
+    fps FLOAT,
+    resolution VARCHAR(20),
+    codec VARCHAR(50),
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB,
+    status VARCHAR(50) DEFAULT 'uploaded'
+);
+
+CREATE TABLE jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    video_id UUID REFERENCES videos(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL, -- 'scene_detection', 'preview_generation'
+    status VARCHAR(50) DEFAULT 'queued', -- queued, processing, completed, failed
+    progress INTEGER DEFAULT 0,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT,
+    config JSONB,
+    result JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE segments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    video_id UUID REFERENCES videos(id) ON DELETE CASCADE,
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    segment_number INTEGER NOT NULL,
+    start_time FLOAT NOT NULL,
+    end_time FLOAT NOT NULL,
+    duration FLOAT GENERATED ALWAYS AS (end_time - start_time) STORED,
+    frame_start INTEGER,
+    frame_end INTEGER,
+    scene_score FLOAT,
+    preview_path TEXT,
+    thumbnail_path TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE job_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+    level VARCHAR(20) NOT NULL, -- DEBUG, INFO, WARNING, ERROR
+    message TEXT NOT NULL,
+    context JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX idx_videos_status ON videos(status);
+CREATE INDEX idx_jobs_video_id ON jobs(video_id);
+CREATE INDEX idx_jobs_status ON jobs(status);
+CREATE INDEX idx_segments_video_id ON segments(video_id);
+CREATE INDEX idx_segments_job_id ON segments(job_id);
+CREATE INDEX idx_job_logs_job_id ON job_logs(job_id);
+CREATE INDEX idx_job_logs_level ON job_logs(level);
+```
+
+**VERIFICATION GATE 1.2:**
+- [ ] Connect to database and verify schema creation
+- [ ] Insert test data and verify constraints
+- [ ] Test all foreign key relationships
+- [ ] Verify indexes are created and working
+
+---
+
+## 🎨 PHASE 2: FRONTEND FOUNDATION WITH TAILWIND THEME
+
+### Step 21-30: Next.js Setup with Custom Theme
+
+**2.1: Initialize Next.js with TypeScript**
+```bash
+npx create-next-app@latest frontend --typescript --tailwind --app --src-dir
+cd frontend
+npm install @radix-ui/themes class-variance-authority clsx tailwind-merge
+```
+
+**2.2: Apply Custom OKLCH Theme**
+```css
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.65rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.141 0.005 285.823);
+    --primary: oklch(0.606 0.25 292.717);
+    --primary-foreground: oklch(0.969 0.016 293.756);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --accent: oklch(0.967 0.001 286.375);
+    --accent-foreground: oklch(0.21 0.006 285.885);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.606 0.25 292.717);
+    --chart-1: oklch(0.646 0.222 41.116);
+    --chart-2: oklch(0.6 0.118 184.704);
+    --chart-3: oklch(0.398 0.07 227.392);
+    --chart-4: oklch(0.828 0.189 84.429);
+    --chart-5: oklch(0.769 0.188 70.08);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.141 0.005 285.823);
+    --sidebar-primary: oklch(0.606 0.25 292.717);
+    --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
+    --sidebar-accent: oklch(0.967 0.001 286.375);
+    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+    --sidebar-border: oklch(0.92 0.004 286.32);
+    --sidebar-ring: oklch(0.606 0.25 292.717);
+  }
+
+  .dark {
+    --background: oklch(0.141 0.005 285.823);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.006 285.885);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.21 0.006 285.885);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.541 0.281 293.009);
+    --primary-foreground: oklch(0.969 0.016 293.756);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.274 0.006 286.033);
+    --muted-foreground: oklch(0.705 0.015 286.067);
+    --accent: oklch(0.274 0.006 286.033);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.541 0.281 293.009);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --sidebar: oklch(0.21 0.006 285.885);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.541 0.281 293.009);
+    --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
+    --sidebar-accent: oklch(0.274 0.006 286.033);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.541 0.281 293.009);
+  }
+}
+```
+
+**VERIFICATION GATE 2.1:**
+- [ ] Use Puppeteer MCP to screenshot the theme application
+- [ ] Verify OKLCH colors render correctly
+- [ ] Test dark mode toggle functionality
+- [ ] Confirm all CSS variables are applied
+
+### Step 31-40: Implement ShadCN Sidebar-04 Layout
+
+**2.3: Fetch and Install Sidebar-04 from ShadCN MCP**
+```typescript
+// Use ShadCN MCP to get Sidebar-04 component
+// Install required dependencies
+npm install @radix-ui/react-navigation-menu
+npm install @radix-ui/react-separator
+npm install @radix-ui/react-tooltip
+
+// app/components/layout/sidebar.tsx
+import { useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import {
+  VideoIcon,
+  LayoutDashboard,
+  FileVideo,
+  Briefcase,
+  ClipboardList,
+  Settings,
+  ChevronRight,
+  Upload,
+  Activity
+} from 'lucide-react'
+
+export function Sidebar() {
+  const pathname = usePathname()
+  const [collapsed, setCollapsed] = useState(false)
+  
+  const navigation = [
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Videos', href: '/videos', icon: FileVideo },
+    { name: 'Jobs', href: '/jobs', icon: Briefcase },
+    { name: 'Segments', href: '/segments', icon: ClipboardList },
+    { name: 'Upload', href: '/upload', icon: Upload },
+    { name: 'Monitoring', href: '/monitoring', icon: Activity },
+    { name: 'Settings', href: '/settings', icon: Settings },
+  ]
+  
+  return (
+    <div className={cn(
+      "flex flex-col h-full bg-sidebar border-r border-sidebar-border transition-all duration-300",
+      collapsed ? "w-16" : "w-64"
+    )}>
+      {/* Sidebar Header */}
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between">
+          <div className={cn("flex items-center space-x-3", collapsed && "justify-center")}>
+            <VideoIcon className="h-8 w-8 text-sidebar-primary" />
+            {!collapsed && (
+              <span className="text-xl font-semibold text-sidebar-foreground">
+                Scene Detect
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="p-1 hover:bg-sidebar-accent rounded-md transition-colors"
+          >
+            <ChevronRight className={cn(
+              "h-4 w-4 text-sidebar-foreground transition-transform",
+              collapsed && "rotate-180"
+            )} />
+          </button>
+        </div>
+      </div>
+      
+      {/* Navigation */}
+      <nav className="flex-1 p-4">
+        <ul className="space-y-2">
+          {navigation.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <li key={item.name}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center px-3 py-2 rounded-md transition-colors",
+                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    isActive && "bg-sidebar-primary text-sidebar-primary-foreground",
+                    collapsed && "justify-center"
+                  )}
+                >
+                  <item.icon className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                  {!collapsed && <span>{item.name}</span>}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </nav>
+      
+      {/* Footer */}
+      <div className="p-4 border-t border-sidebar-border">
+        <div className={cn("text-xs text-sidebar-muted-foreground", collapsed && "text-center")}>
+          {collapsed ? "v1.0" : "Scene Detection v1.0"}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+**VERIFICATION GATE 2.2:**
+- [ ] Use Puppeteer MCP to verify sidebar renders correctly
+- [ ] Test collapse/expand functionality
+- [ ] Verify navigation highlighting works
+- [ ] Confirm responsive behavior
+
+---
+
+## 🔌 PHASE 3: API INTEGRATION LAYER
+
+### Step 41-50: FastAPI Backend with Real-Time Updates
+
+**3.1: Create FastAPI Application with WebSocket Support**
+```python
+# api/main.py
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import asyncpg
+import aioredis
+import os
+from typing import List, Optional
+import json
+from datetime import datetime
+import asyncio
+
+# Database connection pool
+db_pool: Optional[asyncpg.Pool] = None
+redis_client: Optional[aioredis.Redis] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db_pool, redis_client
+    
+    # Initialize database pool
+    db_pool = await asyncpg.create_pool(
+        os.getenv("DATABASE_URL"),
+        min_size=10,
+        max_size=20
+    )
+    
+    # Initialize Redis connection
+    redis_client = await aioredis.from_url(
+        os.getenv("REDIS_URL"),
+        encoding="utf-8",
+        decode_responses=True
+    )
+    
+    yield
+    
+    # Cleanup
+    await db_pool.close()
+    await redis_client.close()
+
+app = FastAPI(lifespan=lifespan)
+
+# CORS configuration for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    async def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
+
+# API Endpoints
+@app.get("/api/health")
+async def health_check():
+    """Verify all services are operational"""
+    try:
+        # Test database connection
+        async with db_pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        
+        # Test Redis connection
+        await redis_client.ping()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "redis": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+@app.get("/api/videos")
+async def list_videos(
+    status: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """List all videos with optional filtering"""
+    query = """
+        SELECT 
+            id, filename, filepath, file_size, duration_seconds,
+            fps, resolution, codec, uploaded_at, status, metadata
+        FROM videos
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY uploaded_at DESC
+        LIMIT $2 OFFSET $3
+    """
+    
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(query, status, limit, offset)
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM videos WHERE ($1::text IS NULL OR status = $1)",
+            status
+        )
+    
+    return {
+        "videos": [dict(row) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+@app.post("/api/videos/upload")
+async def initiate_upload(video_data: dict):
+    """Register a new video and queue for processing"""
+    async with db_pool.acquire() as conn:
+        # Insert video record
+        video_id = await conn.fetchval("""
+            INSERT INTO videos (filename, filepath, file_size, metadata, status)
+            VALUES ($1, $2, $3, $4, 'pending_analysis')
+            RETURNING id
+        """, video_data['filename'], video_data['filepath'], 
+            video_data.get('file_size'), json.dumps(video_data.get('metadata', {})))
+        
+        # Create job
+        job_id = await conn.fetchval("""
+            INSERT INTO jobs (video_id, type, status, config)
+            VALUES ($1, 'scene_detection', 'queued', $2)
+            RETURNING id
+        """, video_id, json.dumps(video_data.get('config', {})))
+        
+        # Queue job in Redis
+        await redis_client.lpush('job_queue', json.dumps({
+            'job_id': str(job_id),
+            'video_id': str(video_id),
+            'type': 'scene_detection'
+        }))
+        
+        # Broadcast update via WebSocket
+        await manager.broadcast({
+            'event': 'job_created',
+            'job_id': str(job_id),
+            'video_id': str(video_id)
+        })
+        
+        return {
+            'video_id': str(video_id),
+            'job_id': str(job_id),
+            'status': 'queued'
+        }
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket for real-time updates"""
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive and handle incoming messages
+            data = await websocket.receive_text()
+            # Process any client messages if needed
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
+```
+
+**VERIFICATION GATE 3.1:**
+- [ ] Test all API endpoints with real requests
+- [ ] Verify WebSocket connections work
+- [ ] Test database operations
+- [ ] Confirm Redis queue operations
+
+### Step 51-60: Job Queue Worker Implementation
+
+**3.2: Create Worker Service for Scene Detection**
+```python
+# worker/worker.py
+import asyncio
+import aioredis
+import asyncpg
+import json
+import os
+import subprocess
+from datetime import datetime
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class SceneDetectionWorker:
+    def __init__(self):
+        self.redis_client = None
+        self.db_pool = None
+        self.running = True
+    
+    async def initialize(self):
+        """Initialize connections"""
+        self.redis_client = await aioredis.from_url(
+            os.getenv("REDIS_URL"),
+            encoding="utf-8",
+            decode_responses=True
+        )
+        
+        self.db_pool = await asyncpg.create_pool(
+            os.getenv("DATABASE_URL"),
+            min_size=5,
+            max_size=10
+        )
+    
+    async def process_job(self, job_data: dict):
+        """Process a single scene detection job"""
+        job_id = job_data['job_id']
+        video_id = job_data['video_id']
+        
+        try:
+            # Update job status to processing
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE jobs 
+                    SET status = 'processing', started_at = $1
+                    WHERE id = $2
+                """, datetime.utcnow(), job_id)
+                
+                # Get video details
+                video = await conn.fetchrow(
+                    "SELECT * FROM videos WHERE id = $1",
+                    video_id
+                )
+            
+            # Log start
+            await self.log_message(job_id, 'INFO', f"Starting scene detection for {video['filename']}")
+            
+            # Publish progress update
+            await self.publish_progress(job_id, 0, "Initializing scene detection")
+            
+            # Run actual scene detection (integrate with existing CLI tool)
+            result = await self.run_scene_detection(video['filepath'], job_id)
+            
+            # Save segments to database
+            async with self.db_pool.acquire() as conn:
+                for idx, segment in enumerate(result['segments']):
+                    await conn.execute("""
+                        INSERT INTO segments 
+                        (video_id, job_id, segment_number, start_time, end_time, 
+                         frame_start, frame_end, scene_score, metadata)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """, video_id, job_id, idx + 1, 
+                        segment['start_time'], segment['end_time'],
+                        segment.get('frame_start'), segment.get('frame_end'),
+                        segment.get('score'), json.dumps(segment.get('metadata', {})))
+                
+                # Update job as completed
+                await conn.execute("""
+                    UPDATE jobs 
+                    SET status = 'completed', 
+                        completed_at = $1, 
+                        progress = 100,
+                        result = $2
+                    WHERE id = $3
+                """, datetime.utcnow(), json.dumps(result), job_id)
+            
+            # Log completion
+            await self.log_message(job_id, 'INFO', f"Scene detection completed: {len(result['segments'])} segments found")
+            
+            # Publish completion
+            await self.publish_progress(job_id, 100, "Scene detection completed")
+            
+        except Exception as e:
+            logger.error(f"Job {job_id} failed: {str(e)}")
+            
+            # Update job as failed
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE jobs 
+                    SET status = 'failed', 
+                        completed_at = $1,
+                        error_message = $2
+                    WHERE id = $3
+                """, datetime.utcnow(), str(e), job_id)
+            
+            # Log error
+            await self.log_message(job_id, 'ERROR', str(e))
+            
+            # Publish failure
+            await self.publish_progress(job_id, -1, f"Failed: {str(e)}")
+    
+    async def run_scene_detection(self, video_path: str, job_id: str):
+        """Execute scene detection using existing CLI tool"""
+        # This integrates with your existing scene detection CLI
+        cmd = [
+            'python', '/app/scene_detect_cli.py',
+            '--input', video_path,
+            '--threshold', '0.3',
+            '--output-format', 'json'
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Stream progress
+        async def read_progress():
+            async for line in process.stderr:
+                if b'Progress:' in line:
+                    # Extract progress percentage
+                    progress = int(line.decode().split(':')[1].strip().replace('%', ''))
+                    await self.publish_progress(job_id, progress, "Processing video")
+        
+        # Run progress reader in background
+        asyncio.create_task(read_progress())
+        
+        # Wait for completion
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            raise Exception(f"Scene detection failed: {stderr.decode()}")
+        
+        # Parse result
+        return json.loads(stdout.decode())
+    
+    async def log_message(self, job_id: str, level: str, message: str):
+        """Log message to database"""
+        async with self.db_pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO job_logs (job_id, level, message)
+                VALUES ($1, $2, $3)
+            """, job_id, level, message)
+    
+    async def publish_progress(self, job_id: str, progress: int, message: str):
+        """Publish progress update via Redis pub/sub"""
+        await self.redis_client.publish('job_updates', json.dumps({
+            'job_id': job_id,
+            'progress': progress,
+            'message': message,
+            'timestamp': datetime.utcnow().isoformat()
+        }))
+    
+    async def run(self):
+        """Main worker loop"""
+        await self.initialize()
+        logger.info("Worker started and ready")
+        
+        while self.running:
+            try:
+                # Block and wait for job
+                job_json = await self.redis_client.brpop(['job_queue'], timeout=1)
+                
+                if job_json:
+                    job_data = json.loads(job_json[1])
+                    logger.info(f"Processing job: {job_data['job_id']}")
+                    await self.process_job(job_data)
+                    
+            except Exception as e:
+                logger.error(f"Worker error: {str(e)}")
+                await asyncio.sleep(5)
+    
+    async def shutdown(self):
+        """Clean shutdown"""
+        self.running = False
+        await self.redis_client.close()
+        await self.db_pool.close()
+
+# Run worker
+if __name__ == "__main__":
+    worker = SceneDetectionWorker()
+    try:
+        asyncio.run(worker.run())
+    except KeyboardInterrupt:
+        asyncio.run(worker.shutdown())
+```
+
+**VERIFICATION GATE 3.2:**
+- [ ] Test worker picks up jobs from queue
+- [ ] Verify scene detection integration works
+- [ ] Test progress updates are published
+- [ ] Confirm database updates are correct
+
+---
+
+## 🎯 PHASE 4: FRONTEND REAL-TIME FEATURES
+
+### Step 61-70: React Components with Live Updates
+
+**4.1: Create WebSocket Hook for Real-Time Updates**
+```typescript
+// frontend/src/hooks/useWebSocket.ts
+import { useEffect, useState, useCallback } from 'react'
+
+interface WebSocketMessage {
+  event: string
+  job_id?: string
+  video_id?: string
+  progress?: number
+  message?: string
+  timestamp?: string
+}
+
+export function useWebSocket(url: string) {
+  const [socket, setSocket] = useState<WebSocket | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
+  
+  useEffect(() => {
+    const ws = new WebSocket(url)
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected')
+      setIsConnected(true)
+    }
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      setLastMessage(data)
+    }
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected')
+      setIsConnected(false)
+    }
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+    
+    setSocket(ws)
+    
+    return () => {
+      ws.close()
+    }
+  }, [url])
+  
+  const sendMessage = useCallback((message: any) => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(message))
+    }
+  }, [socket])
+  
+  return { isConnected, lastMessage, sendMessage }
+}
+```
+
+**4.2: Job Monitoring Dashboard Component**
+```typescript
+// frontend/src/components/JobMonitor.tsx
+import { useState, useEffect } from 'react'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { Progress } from '@/components/ui/progress'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Activity, CheckCircle, XCircle, Clock } from 'lucide-react'
+
+interface Job {
+  id: string
+  video_id: string
+  type: string
+  status: string
+  progress: number
+  started_at?: string
+  completed_at?: string
+  error_message?: string
+}
+
+export function JobMonitor() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+  const { isConnected, lastMessage } = useWebSocket(process.env.NEXT_PUBLIC_WS_URL!)
+  
+  // Fetch initial jobs
+  useEffect(() => {
+    fetchJobs()
+  }, [])
+  
+  // Handle WebSocket messages
+  useEffect(() => {
+    if (lastMessage) {
+      if (lastMessage.event === 'job_created') {
+        fetchJobs() // Refresh job list
+      } else if (lastMessage.job_id) {
+        // Update specific job progress
+        setJobs(prev => prev.map(job => 
+          job.id === lastMessage.job_id
+            ? { ...job, progress: lastMessage.progress || job.progress }
+            : job
+        ))
+      }
+    }
+  }, [lastMessage])
+  
+  const fetchJobs = async () => {
+    const response = await fetch('/api/jobs?limit=10')
+    const data = await response.json()
+    setJobs(data.jobs)
+  }
+  
+  const fetchLogs = async (jobId: string) => {
+    const response = await fetch(`/api/jobs/${jobId}/logs`)
+    const data = await response.json()
+    setLogs(data.logs)
+  }
+  
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />
+      case 'failed':
+        return <XCircle className="h-4 w-4 text-red-500" />
+      case 'processing':
+        return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />
+    }
+  }
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success'
+      case 'failed': return 'destructive'
+      case 'processing': return 'default'
+      default: return 'secondary'
+    }
+  }
+  
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Jobs List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            Active Jobs
+            <Badge variant={isConnected ? 'success' : 'destructive'}>
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {jobs.map(job => (
+              <div 
+                key={job.id}
+                className="p-4 border rounded-lg cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => fetchLogs(job.id)}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(job.status)}
+                    <span className="font-medium">Job {job.id.slice(0, 8)}</span>
+                  </div>
+                  <Badge variant={getStatusColor(job.status)}>
+                    {job.status}
+                  </Badge>
+                </div>
+                
+                {job.status === 'processing' && (
+                  <div className="space-y-2">
+                    <Progress value={job.progress} className="h-2" />
+                    <span className="text-xs text-muted-foreground">
+                      {job.progress}% complete
+                    </span>
+                  </div>
+                )}
+                
+                {job.error_message && (
+                  <div className="mt-2 p-2 bg-destructive/10 rounded text-sm text-destructive">
+                    {job.error_message}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Logs Viewer */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Job Logs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[400px] w-full rounded-md border p-4">
+            <div className="space-y-2">
+              {logs.map((log, idx) => (
+                <div key={idx} className="flex space-x-2 text-sm">
+                  <span className={`font-mono ${
+                    log.level === 'ERROR' ? 'text-destructive' :
+                    log.level === 'WARNING' ? 'text-yellow-600' :
+                    'text-muted-foreground'
+                  }`}>
+                    [{log.level}]
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(log.created_at).toLocaleTimeString()}
+                  </span>
+                  <span className="flex-1">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+```
+
+**VERIFICATION GATE 4.1:**
+- [ ] Use Puppeteer MCP to verify job list renders
+- [ ] Test real-time progress updates
+- [ ] Verify log streaming works
+- [ ] Test error state handling
+
+### Step 71-80: Video Upload and Management Interface
+
+**4.3: Create Upload Component with Progress**
+```typescript
+// frontend/src/components/VideoUpload.tsx
+import { useState, useCallback } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { Upload, Film, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+export function VideoUpload() {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
+  const [config, setConfig] = useState({
+    threshold: 0.3,
+    minSceneLength: 1.0,
+    algorithm: 'content_detect'
+  })
+  
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      setSelectedFile(acceptedFiles[0])
+    }
+  }, [])
+  
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'video/*': ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+    },
+    maxFiles: 1
+  })
+  
+  const handleUpload = async () => {
+    if (!selectedFile) return
+    
+    setIsUploading(true)
+    const formData = new FormData()
+    formData.append('video', selectedFile)
+    formData.append('config', JSON.stringify(config))
+    
+    try {
+      // Upload with progress tracking
+      const xhr = new XMLHttpRequest()
+      
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100)
+          setUploadProgress(progress)
+        }
+      })
+      
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText)
+          console.log('Upload complete:', response)
+          // Reset state
+          setSelectedFile(null)
+          setUploadProgress(0)
+          // Redirect to job monitoring
+          window.location.href = `/jobs/${response.job_id}`
+        }
+      }
+      
+      xhr.open('POST', '/api/videos/upload')
+      xhr.send(formData)
+      
+    } catch (error) {
+      console.error('Upload failed:', error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+  
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Upload Area */}
+      <Card>
+        <CardContent className="p-6">
+          <div
+            {...getRootProps()}
+            className={`
+              border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+              transition-colors hover:border-primary
+              ${isDragActive ? 'border-primary bg-primary/5' : 'border-border'}
+              ${selectedFile ? 'bg-muted/50' : ''}
+            `}
+          >
+            <input {...getInputProps()} />
+            
+            {selectedFile ? (
+              <div className="space-y-4">
+                <Film className="h-12 w-12 mx-auto text-primary" />
+                <div>
+                  <p className="font-medium">{selectedFile.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedFile(null)
+                  }}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Drop your video here</p>
+                  <p className="text-sm text-muted-foreground">
+                    or click to browse (MP4, AVI, MOV, MKV, WebM)
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Configuration */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h3 className="font-semibold">Detection Settings</h3>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="threshold">Detection Threshold</Label>
+              <Input
+                id="threshold"
+                type="number"
+                min="0.1"
+                max="1.0"
+                step="0.1"
+                value={config.threshold}
+                onChange={(e) => setConfig({
+                  ...config,
+                  threshold: parseFloat(e.target.value)
+                })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="minScene">Min Scene Length (seconds)</Label>
+              <Input
+                id="minScene"
+                type="number"
+                min="0.5"
+                max="10"
+                step="0.5"
+                value={config.minSceneLength}
+                onChange={(e) => setConfig({
+                  ...config,
+                  minSceneLength: parseFloat(e.target.value)
+                })}
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="algorithm">Detection Algorithm</Label>
+              <Select
+                value={config.algorithm}
+                onValueChange={(value) => setConfig({ ...config, algorithm: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="content_detect">Content Detection</SelectItem>
+                  <SelectItem value="threshold_detect">Threshold Detection</SelectItem>
+                  <SelectItem value="adaptive_detect">Adaptive Detection</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Upload Progress */}
+      {isUploading && (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Uploading...</span>
+              <span className="text-sm text-muted-foreground">{uploadProgress}%</span>
+            </div>
+            <Progress value={uploadProgress} />
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Action Buttons */}
+      <div className="flex justify-end space-x-4">
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedFile(null)
+            setUploadProgress(0)
+          }}
+          disabled={isUploading}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleUpload}
+          disabled={!selectedFile || isUploading}
+        >
+          {isUploading ? 'Uploading...' : 'Start Processing'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+```
+
+**VERIFICATION GATE 4.2:**
+- [ ] Use Puppeteer MCP to test file drag and drop
+- [ ] Verify upload progress tracking
+- [ ] Test configuration changes
+- [ ] Confirm job creation after upload
+
+---
+
+## 🧪 PHASE 5: TESTING WITH PUPPETEER MCP
+
+### Step 81-90: Comprehensive E2E Testing
+
+**5.1: Create Puppeteer Test Suite**
+```javascript
+// tests/e2e/scene-detection.test.js
+const puppeteer = require('puppeteer')
+
+describe('Scene Detection UI E2E Tests', () => {
+  let browser
+  let page
+  
+  beforeAll(async () => {
+    // Launch browser with Puppeteer MCP
+    browser = await puppeteer.launch({
+      headless: false, // Set to true for CI
+      slowMo: 50, // Slow down for visibility
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    })
+    page = await browser.newPage()
+    await page.setViewport({ width: 1920, height: 1080 })
+  })
+  
+  afterAll(async () => {
+    await browser.close()
+  })
+  
+  test('Should load dashboard and verify theme application', async () => {
+    await page.goto('http://localhost:3000')
+    
+    // Verify OKLCH theme is applied
+    const backgroundColor = await page.evaluate(() => {
+      return window.getComputedStyle(document.body).backgroundColor
+    })
+    
+    expect(backgroundColor).toBeTruthy()
+    
+    // Take screenshot for visual verification
+    await page.screenshot({ 
+      path: 'tests/screenshots/dashboard.png',
+      fullPage: true 
+    })
+    
+    // Verify sidebar is present
+    const sidebar = await page.$('[data-testid="sidebar"]')
+    expect(sidebar).toBeTruthy()
+  })
+  
+  test('Should upload video and track progress', async () => {
+    await page.goto('http://localhost:3000/upload')
+    
+    // Upload test video
+    const fileInput = await page.$('input[type="file"]')
+    await fileInput.uploadFile('tests/fixtures/test-video.mp4')
+    
+    // Verify file is selected
+    await page.waitForSelector('[data-testid="selected-file"]')
+    
+    // Configure settings
+    await page.type('#threshold', '0.5')
+    
+    // Start upload
+    await page.click('[data-testid="upload-button"]')
+    
+    // Wait for progress bar
+    await page.waitForSelector('[role="progressbar"]')
+    
+    // Verify progress updates
+    await page.waitForFunction(
+      () => {
+        const progress = document.querySelector('[role="progressbar"]')
+        return progress && parseInt(progress.getAttribute('aria-valuenow')) > 0
+      },
+      { timeout: 30000 }
+    )
+    
+    // Take screenshot of upload progress
+    await page.screenshot({ 
+      path: 'tests/screenshots/upload-progress.png' 
+    })
+  })
+  
+  test('Should display real-time job progress', async () => {
+    await page.goto('http://localhost:3000/jobs')
+    
+    // Wait for WebSocket connection
+    await page.waitForSelector('[data-testid="ws-connected"]')
+    
+    // Verify job appears in list
+    await page.waitForSelector('[data-testid="job-item"]')
+    
+    // Click on job to see logs
+    await page.click('[data-testid="job-item"]:first-child')
+    
+    // Verify logs are displayed
+    await page.waitForSelector('[data-testid="job-logs"]')
+    
+    // Verify progress updates
+    await page.waitForFunction(
+      () => {
+        const progress = document.querySelector('[data-testid="job-progress"]')
+        return progress && parseInt(progress.textContent) > 0
+      },
+      { timeout: 60000 }
+    )
+    
+    // Screenshot of job monitoring
+    await page.screenshot({ 
+      path: 'tests/screenshots/job-monitoring.png' 
+    })
+  })
+  
+  test('Should display segments after processing', async () => {
+    // Wait for job completion
+    await page.waitForSelector('[data-testid="job-completed"]', {
+      timeout: 120000
+    })
+    
+    // Navigate to segments
+    await page.goto('http://localhost:3000/segments')
+    
+    // Verify segments are displayed
+    await page.waitForSelector('[data-testid="segment-item"]')
+    
+    // Count segments
+    const segmentCount = await page.$$eval(
+      '[data-testid="segment-item"]',
+      segments => segments.length
+    )
+    
+    expect(segmentCount).toBeGreaterThan(0)
+    
+    // Click on segment for preview
+    await page.click('[data-testid="segment-item"]:first-child')
+    
+    // Verify preview modal
+    await page.waitForSelector('[data-testid="segment-preview"]')
+    
+    // Screenshot of segments view
+    await page.screenshot({ 
+      path: 'tests/screenshots/segments-view.png' 
+    })
+  })
+  
+  test('Should handle errors gracefully', async () => {
+    // Test with invalid file
+    await page.goto('http://localhost:3000/upload')
+    
+    // Try to upload non-video file
+    const fileInput = await page.$('input[type="file"]')
+    await fileInput.uploadFile('tests/fixtures/invalid.txt')
+    
+    // Verify error message
+    await page.waitForSelector('[data-testid="error-message"]')
+    
+    // Screenshot error state
+    await page.screenshot({ 
+      path: 'tests/screenshots/error-state.png' 
+    })
+  })
+})
+```
+
+**VERIFICATION GATE 5.1:**
+- [ ] All Puppeteer tests pass
+- [ ] Screenshots verify correct rendering
+- [ ] Real-time features work as expected
+- [ ] Error handling is robust
+
+---
+
+## 📊 PHASE 6: MONITORING AND OBSERVABILITY
+
+### Step 91-100: Production Monitoring Setup
+
+**6.1: Add Prometheus Metrics**
+```python
+# api/metrics.py
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
+from fastapi import Response
+import time
+
+# Define metrics
+upload_counter = Counter('video_uploads_total', 'Total number of video uploads')
+job_counter = Counter('jobs_total', 'Total number of jobs', ['type', 'status'])
+job_duration = Histogram('job_duration_seconds', 'Job processing duration')
+active_jobs = Gauge('active_jobs', 'Number of currently active jobs')
+queue_size = Gauge('queue_size', 'Current job queue size')
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    # Update queue size
+    queue_length = await redis_client.llen('job_queue')
+    queue_size.set(queue_length)
+    
+    # Update active jobs
+    async with db_pool.acquire() as conn:
+        active_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'processing'"
+        )
+        active_jobs.set(active_count)
+    
+    return Response(content=generate_latest(), media_type="text/plain")
+```
+
+**6.2: Grafana Dashboard Configuration**
+```json
+{
+  "dashboard": {
+    "title": "Scene Detection System",
+    "panels": [
+      {
+        "title": "Upload Rate",
+        "targets": [
+          {
+            "expr": "rate(video_uploads_total[5m])"
+          }
+        ]
+      },
+      {
+        "title": "Job Processing Time",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, job_duration_seconds)"
+          }
+        ]
+      },
+      {
+        "title": "Queue Size",
+        "targets": [
+          {
+            "expr": "queue_size"
+          }
+        ]
+      },
+      {
+        "title": "Active Jobs",
+        "targets": [
+          {
+            "expr": "active_jobs"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 🚀 PHASE 7: PRODUCTION DEPLOYMENT
+
+### Step 101-110: Production Configuration
+
+**7.1: Production Docker Compose**
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - api
+  
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+  
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.prod
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+  
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    deploy:
+      replicas: 4
+  
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+  
+  grafana:
+    image: grafana/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+```
+
+**FINAL VERIFICATION GATES:**
+- [ ] All services start in production mode
+- [ ] Load testing shows acceptable performance
+- [ ] Monitoring dashboards show all metrics
+- [ ] Error recovery works correctly
+- [ ] Data persistence is verified
+- [ ] WebSocket connections remain stable
+- [ ] File uploads work with large videos
+- [ ] Job queue processes reliably
+- [ ] UI is responsive on all devices
+- [ ] Theme is correctly applied throughout
+
+---
+
+## 📝 IMPLEMENTATION CHECKLIST
+
+### Pre-Implementation
+- [ ] Complete codebase analysis done
+- [ ] All existing services documented
+- [ ] Context saved to memory MCP
+
+### Infrastructure
+- [ ] Docker Compose extended
+- [ ] Database schema created
+- [ ] Redis queue configured
+- [ ] Volumes properly mounted
+
+### Backend
+- [ ] FastAPI application running
+- [ ] WebSocket connections working
+- [ ] Worker processing jobs
+- [ ] Real-time updates functioning
+
+### Frontend
+- [ ] Next.js app created
+- [ ] OKLCH theme applied
+- [ ] ShadCN components integrated
+- [ ] Real-time updates working
+
+### Testing
+- [ ] Puppeteer tests passing
+- [ ] E2E scenarios verified
+- [ ] Performance acceptable
+- [ ] Error handling robust
+
+### Production
+- [ ] Monitoring configured
+- [ ] Metrics exposed
+- [ ] Dashboards created
+- [ ] Production deployment tested
+
+---
+
+## 🎯 COMPLETION CRITERIA
+
+This implementation is considered complete when:
+
+1. **Every file in the existing codebase has been analyzed**
+2. **All services communicate correctly**
+3. **Real backend integration works without mocks**
+4. **Puppeteer verifies all UI functionality**
+5. **WebSocket real-time updates are functional**
+6. **Job processing completes successfully**
+7. **Segments are generated and viewable**
+8. **Monitoring shows system health**
+9. **Production deployment is stable**
+10. **Theme is correctly applied throughout**
+
+**DO NOT consider this complete until ALL verification gates pass with real, live testing in production environment.**
