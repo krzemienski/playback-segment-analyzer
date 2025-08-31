@@ -301,8 +301,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For now, we'll return a placeholder path
       const thumbnailUrl = `/public-objects/thumbnails/${video.id}_thumb.jpg`;
       
-      // Update video with thumbnail URL
-      await storage.updateVideo(video.id, { thumbnailUrl });
+      // In production, the thumbnail would be generated and stored
+      // For now, just return the URL without updating the video
       
       res.json({ thumbnailUrl });
     } catch (error) {
@@ -376,10 +376,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Job not found' });
       }
 
-      // Add job back to queue
+      // Add job back to queue with the video filename
+      const video = await storage.getVideo(job.videoId);
+      if (!video) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
       await jobQueue.add('process-video', {
         jobId: job.id,
         videoId: job.videoId,
+        filename: video.filename,
         type: job.type,
       });
 

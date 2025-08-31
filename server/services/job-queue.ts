@@ -1,8 +1,8 @@
 import Queue from "bull";
-import { redis } from "./redis";
 import { storage } from "../storage";
 import { videoProcessor } from "../services/video-processor";
 import { ObjectStorageService } from "../objectStorage";
+import { inMemoryQueue } from "./in-memory-queue";
 
 // Broadcast function will be injected by routes.ts
 let broadcastFunction: ((data: any) => void) | null = null;
@@ -11,8 +11,11 @@ export function setBroadcast(broadcast: (data: any) => void) {
   broadcastFunction = broadcast;
 }
 
-// Create job queue
-export const jobQueue = new Queue("video processing", {
+// Use in-memory queue for development/testing when Redis is not available
+const useInMemoryQueue = true; // Set to false when Redis is properly configured
+
+// Create job queue (using in-memory for now)
+export const jobQueue = useInMemoryQueue ? inMemoryQueue : new Queue("video processing", {
   redis: {
     host: process.env.REDIS_HOST || "localhost",
     port: parseInt(process.env.REDIS_PORT || "6379"),
@@ -155,7 +158,7 @@ export async function getWorkerStats() {
         id: `worker-${index + 1}`,
         status: "processing",
         jobId: job.id,
-        progress: job.progress(),
+        progress: typeof job.progress === 'function' ? job.progress() : job.progress || 0,
       }))
     };
   } catch (error) {
