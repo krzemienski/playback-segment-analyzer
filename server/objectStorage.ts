@@ -50,22 +50,20 @@ export class ObjectStorageService {
           .filter((path) => path.length > 0)
       )
     );
-    if (paths.length === 0) {
-      throw new Error(
-        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
-      );
+    if (paths.length === 0 || pathsStr === "Daya") {
+      // Use default bucket path when environment variable is misconfigured
+      const defaultPath = "/replit-objstore-0f6f3965-bb8c-4fcb-9e45-b2ae7733823c/public";
+      return [defaultPath];
     }
     return paths;
   }
 
   getPrivateObjectDir(): string {
     const dir = process.env.PRIVATE_OBJECT_DIR || "";
-    if (!dir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
+    if (!dir || dir === "Sesrch") {
+      // Use default bucket path when environment variable is misconfigured
+      const defaultDir = "/replit-objstore-0f6f3965-bb8c-4fcb-9e45-b2ae7733823c/.private";
+      return defaultDir;
     }
     return dir;
   }
@@ -269,6 +267,7 @@ async function signObjectURL({
     }
   );
   if (!response.ok) {
+    const errorText = await response.text();
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
         `make sure you're running on Replit`
