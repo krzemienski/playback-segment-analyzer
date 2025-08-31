@@ -2,6 +2,7 @@ import Queue from "bull";
 import { redis } from "./redis";
 import { storage } from "../storage";
 import { videoProcessor } from "../services/video-processor";
+import { ObjectStorageService } from "../objectStorage";
 
 // Broadcast function will be injected by routes.ts
 let broadcastFunction: ((data: any) => void) | null = null;

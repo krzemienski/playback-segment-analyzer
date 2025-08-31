@@ -25,6 +25,7 @@ export interface IStorage {
   }): Promise<Video[]>;
   createVideo(video: InsertVideo): Promise<Video>;
   updateVideo(id: string, updates: Partial<Video>): Promise<Video | undefined>;
+  deleteVideo(id: string): Promise<boolean>;
 
   // Job methods
   getJob(id: string): Promise<Job | undefined>;
@@ -36,11 +37,13 @@ export interface IStorage {
   }): Promise<Job[]>;
   createJob(job: InsertJob): Promise<Job>;
   updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined>;
+  deleteJobsByVideoId(videoId: string): Promise<void>;
 
   // Scene methods
   getScenesByVideoId(videoId: string): Promise<Scene[]>;
   createScene(scene: InsertScene): Promise<Scene>;
   createScenes(scenes: InsertScene[]): Promise<Scene[]>;
+  deleteScenesByVideoId(videoId: string): Promise<void>;
 
   // System metrics methods
   getSystemMetrics(options: {
@@ -137,6 +140,14 @@ export class DatabaseStorage implements IStorage {
     return video || undefined;
   }
 
+  async deleteVideo(id: string): Promise<boolean> {
+    const result = await db
+      .delete(videos)
+      .where(eq(videos.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
   // Job methods
   async getJob(id: string): Promise<Job | undefined> {
     const [job] = await db
@@ -215,6 +226,12 @@ export class DatabaseStorage implements IStorage {
     return job || undefined;
   }
 
+  async deleteJobsByVideoId(videoId: string): Promise<void> {
+    await db
+      .delete(jobs)
+      .where(eq(jobs.videoId, videoId));
+  }
+
   // Scene methods
   async getScenesByVideoId(videoId: string): Promise<Scene[]> {
     return await db
@@ -245,6 +262,12 @@ export class DatabaseStorage implements IStorage {
       .insert(scenes)
       .values(scenesWithTimestamp)
       .returning();
+  }
+
+  async deleteScenesByVideoId(videoId: string): Promise<void> {
+    await db
+      .delete(scenes)
+      .where(eq(scenes.videoId, videoId));
   }
 
   // System metrics methods

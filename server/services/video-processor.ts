@@ -2,8 +2,36 @@ import path from "path";
 import fs from "fs/promises";
 import { storage } from "../storage";
 import { insertSceneSchema } from "@shared/schema";
+import { ObjectStorageService } from "../objectStorage";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 
 class VideoProcessor {
+  private async downloadVideoIfNeeded(filename: string): Promise<{ tempPath: string | null, needsCleanup: boolean }> {
+    // If it's an object storage path, download it
+    if (filename && filename.startsWith('/objects/')) {
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(filename);
+      
+      // Create temp directory if it doesn't exist
+      const tempDir = path.join(process.cwd(), 'temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      // Download to temp file
+      const tempPath = path.join(tempDir, `video_${Date.now()}.mp4`);
+      const writeStream = createWriteStream(tempPath);
+      const readStream = objectFile.createReadStream();
+      
+      await pipeline(readStream, writeStream);
+      console.log(`Downloaded video to temp file: ${tempPath}`);
+      
+      return { tempPath, needsCleanup: true };
+    }
+    
+    // Otherwise, assume it's a local file path
+    return { tempPath: filename, needsCleanup: false };
+  }
+
   async detectScenes(filename: string, onProgress: (progress: number) => void): Promise<any> {
     // Simulate scene detection processing
     const scenes = [];

@@ -4,10 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TimelineScrubber from "@/components/video/timeline-scrubber";
-import { Download, RotateCcw, Play } from "lucide-react";
+import { Download, RotateCcw, Play, X } from "lucide-react";
+import { useState } from "react";
 
 export default function Segments() {
   const { videoId } = useParams();
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [currentSegment, setCurrentSegment] = useState<any>(null);
 
   const { data: video, isLoading: videoLoading } = useQuery<any>({
     queryKey: ["/api/videos", videoId],
@@ -148,7 +151,15 @@ export default function Segments() {
                         ({(parseFloat(scene.endTime) - parseFloat(scene.startTime)).toFixed(1)}s)
                       </p>
                       <div className="flex space-x-2 mt-3">
-                        <Button size="sm" className="flex-1" data-testid={`preview-segment-${index}`}>
+                        <Button 
+                          size="sm" 
+                          className="flex-1" 
+                          data-testid={`preview-segment-${index}`}
+                          onClick={() => {
+                            setCurrentSegment(scene);
+                            setShowVideoPlayer(true);
+                          }}
+                        >
                           <Play className="h-3 w-3 mr-1" />
                           Preview
                         </Button>
@@ -171,6 +182,48 @@ export default function Segments() {
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Video Player Modal */}
+      {showVideoPlayer && video && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg shadow-xl max-w-4xl w-full">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">
+                {currentSegment ? 
+                  `Segment Preview (${parseFloat(currentSegment.startTime).toFixed(1)}s - ${parseFloat(currentSegment.endTime).toFixed(1)}s)` : 
+                  'Video Preview'
+                }
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowVideoPlayer(false);
+                  setCurrentSegment(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <video
+                controls
+                autoPlay
+                className="w-full rounded-lg"
+                src={`/api/videos/${video.id}/stream`}
+                onLoadedMetadata={(e) => {
+                  if (currentSegment) {
+                    const videoElement = e.target as HTMLVideoElement;
+                    videoElement.currentTime = parseFloat(currentSegment.startTime);
+                  }
+                }}
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

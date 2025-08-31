@@ -209,6 +209,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // Stream video from object storage
+  app.get('/api/videos/:id/stream', async (req, res) => {
+    try {
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
+      // Check if video is in object storage
+      if (video.filename && video.filename.startsWith('/objects/')) {
+        const objectStorageService = new ObjectStorageService();
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(video.filename);
+          
+          // Set appropriate headers for video streaming
+          const [metadata] = await objectFile.getMetadata();
+          const fileSize = metadata.size as number;
+          
+          const range = req.headers.range;
+          if (range) {
+            // Handle range requests for video seeking
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            const chunksize = (end - start) + 1;
+            
+            res.writeHead(206, {
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Type': 'video/mp4',
+            });
+            
+            const stream = objectFile.createReadStream({ start, end });
+            stream.pipe(res);
+          } else {
+            res.writeHead(200, {
+              'Content-Length': fileSize,
+              'Content-Type': 'video/mp4',
+            });
+            objectFile.createReadStream().pipe(res);
+          }
+        } catch (error) {
+          console.error('Error streaming video:', error);
+          if (error instanceof ObjectNotFoundError) {
+            return res.status(404).json({ error: 'Video file not found' });
+          }
+          return res.status(500).json({ error: 'Failed to stream video' });
+        }
+      } else {
+        // Fallback for old videos stored locally
+        return res.status(404).json({ error: 'Video file not found' });
+      }
+    } catch (error) {
+      console.error('Error fetching video:', error);
+      res.status(500).json({ error: 'Failed to fetch video' });
+    }
+  });
+
+  // Generate and store thumbnail in object storage
+  app.post('/api/videos/:id/thumbnail', async (req, res) => {
+    try {
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
+      // Generate thumbnail URL in public storage
+      const objectStorageService = new ObjectStorageService();
+      const publicPaths = objectStorageService.getPublicObjectSearchPaths();
+      if (publicPaths.length === 0) {
+        return res.status(500).json({ error: 'Public storage not configured' });
+      }
+
+      // Create thumbnail path
+      const thumbnailPath = `${publicPaths[0]}/thumbnails/${video.id}_thumb.jpg`;
+      
+      // In production, you would generate actual thumbnail from video
+      // For now, we'll return a placeholder path
+      const thumbnailUrl = `/public-objects/thumbnails/${video.id}_thumb.jpg`;
+      
+      // Update video with thumbnail URL
+      await storage.updateVideo(video.id, { thumbnailUrl });
+      
+      res.json({ thumbnailUrl });
+    } catch (error) {
+      console.error('Error generating thumbnail:', error);
+      res.status(500).json({ error: 'Failed to generate thumbnail' });
+    }
+  });
   
 
   // Job routes
@@ -303,6 +394,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching scenes:', error);
       res.status(500).json({ error: 'Failed to fetch scenes' });
+    }
+  });
+
+  // Delete video and its associated file from object storage
+  app.delete('/api/videos/:id', async (req, res) => {
+    try {
+      // Get video details first
+      const video = await storage.getVideo(req.params.id);
+      if (!video) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+
+      // Delete from object storage if it's stored there
+      if (video.filename && video.filename.startsWith('/objects/')) {
+        const objectStorageService = new ObjectStorageService();
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(video.filename);
+          await objectFile.delete();
+          console.log(`Deleted video file from object storage: ${video.filename}`);
+        } catch (error) {
+          console.error('Error deleting from object storage:', error);
+          // Continue with database deletion even if file deletion fails
+        }
+      }
+
+      // Delete associated scenes
+      await storage.deleteScenesByVideoId(req.params.id);
+      
+      // Delete associated jobs
+      await storage.deleteJobsByVideoId(req.params.id);
+      
+      // Delete video from database
+      const deleted = await storage.deleteVideo(req.params.id);
+      
+      if (deleted) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ error: 'Video not found' });
+      }
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      res.status(500).json({ error: 'Failed to delete video' });
     }
   });
 
