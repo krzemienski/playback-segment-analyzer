@@ -3,9 +3,11 @@ import { CloudUpload } from "lucide-react";
 
 interface UploadZoneProps {
   onFilesSelected: (files: File[]) => void;
+  maxFiles?: number;
+  showBatchOptions?: boolean;
 }
 
-export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
+export default function UploadZone({ onFilesSelected, maxFiles = 10, showBatchOptions = true }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,6 +78,11 @@ export default function UploadZone({ onFilesSelected }: UploadZoneProps) {
       <p className="text-sm text-muted-foreground">
         Supported formats: MP4, AVI, MOV, MKV • Max size: 10GB
       </p>
+      {showBatchOptions && (
+        <p className="text-xs text-primary mt-2">
+          Batch processing: Upload up to {maxFiles} videos at once
+        </p>
+      )}
     </div>
   );
 }

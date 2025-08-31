@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import UploadZone from "@/components/video/upload-zone";
+import { UploadPulse } from "@/components/ui/animated-loader";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Video, Check, Play, Settings2, X } from "lucide-react";
+import { Video, Check, Play, Settings2, X, PlayCircle, Trash2, FileStack } from "lucide-react";
 
 interface UploadItem {
   file: File;
@@ -22,6 +24,8 @@ interface UploadItem {
 
 export default function Upload() {
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  const [batchMode, setBatchMode] = useState(false);
+  const [autoProcess, setAutoProcess] = useState(true);
   const [config, setConfig] = useState({
     threshold: 0.3,
     minSceneLength: 1.0,
@@ -121,10 +125,37 @@ export default function Upload() {
 
     setUploadQueue(prev => [...prev, ...newItems]);
 
+    if (batchMode && files.length > 1) {
+      toast({
+        title: "Batch Upload Started",
+        description: `Processing ${files.length} videos in batch mode`,
+      });
+    }
+
     // Start uploading each file
     files.forEach(file => {
       uploadMutation.mutate(file);
     });
+  };
+
+  const processAllCompleted = () => {
+    const completedItems = uploadQueue.filter(item => 
+      item.status === "completed" && item.videoId
+    );
+    
+    completedItems.forEach(item => {
+      if (item.videoId) {
+        startProcessing(item.videoId);
+      }
+    });
+  };
+
+  const clearCompleted = () => {
+    setUploadQueue(prev => prev.filter(item => item.status !== "completed"));
+  };
+
+  const removeItem = (index: number) => {
+    setUploadQueue(prev => prev.filter((_, i) => i !== index));
   };
 
   const startProcessing = async (videoId: string) => {
@@ -154,16 +185,51 @@ export default function Upload() {
       {/* Upload Zone */}
       <Card>
         <CardContent className="p-8">
-          <UploadZone onFilesSelected={handleFilesSelected} />
+          <UploadZone 
+            onFilesSelected={handleFilesSelected} 
+            maxFiles={batchMode ? 20 : 5}
+            showBatchOptions={true}
+          />
+          {uploadQueue.some(item => item.status === "uploading") && (
+            <div className="mt-4 flex justify-center">
+              <UploadPulse />
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Configuration Settings */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Settings2 className="h-5 w-5 mr-2" />
-            Detection Settings
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center">
+              <Settings2 className="h-5 w-5 mr-2" />
+              Detection Settings
+            </span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="batch-mode"
+                  checked={batchMode}
+                  onCheckedChange={setBatchMode}
+                  data-testid="batch-mode-switch"
+                />
+                <Label htmlFor="batch-mode" className="text-sm font-normal">
+                  Batch Mode
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="auto-process"
+                  checked={autoProcess}
+                  onCheckedChange={setAutoProcess}
+                  data-testid="auto-process-switch"
+                />
+                <Label htmlFor="auto-process" className="text-sm font-normal">
+                  Auto Process
+                </Label>
+              </div>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -234,7 +300,42 @@ export default function Upload() {
       {/* Upload Queue */}
       <Card>
         <CardHeader>
-          <CardTitle>Upload Queue</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center">
+              <FileStack className="h-5 w-5 mr-2" />
+              Upload Queue
+              {uploadQueue.length > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {uploadQueue.length} files
+                </Badge>
+              )}
+            </span>
+            {uploadQueue.length > 0 && (
+              <div className="flex items-center space-x-2">
+                {uploadQueue.some(item => item.status === "completed") && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={processAllCompleted}
+                      data-testid="process-all-button"
+                    >
+                      <PlayCircle className="h-4 w-4 mr-1" />
+                      Process All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearCompleted}
+                      data-testid="clear-completed-button"
+                    >
+                      Clear Completed
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -288,14 +389,24 @@ export default function Upload() {
                     )}
                     
                     {item.status === "completed" && (
-                      <Button 
-                        size="sm"
-                        onClick={() => item.videoId && startProcessing(item.videoId)}
-                        data-testid={`start-processing-${index}`}
-                      >
-                        <Play className="h-4 w-4 mr-1" />
-                        Start Processing
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        <Button 
+                          size="sm"
+                          onClick={() => item.videoId && startProcessing(item.videoId)}
+                          data-testid={`start-processing-${index}`}
+                        >
+                          <Play className="h-4 w-4 mr-1" />
+                          Process
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeItem(index)}
+                          data-testid={`remove-item-${index}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
                     
                     {item.status === "failed" && (

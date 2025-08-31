@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import JobTable from "@/components/jobs/job-table";
+import { JobVisualizer } from "@/components/jobs/job-visualizer";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { Activity, CheckCircle, XCircle, Clock } from "lucide-react";
@@ -104,16 +105,11 @@ export default function Jobs() {
                 </div>
               ))}
             </div>
-          ) : jobs.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No jobs found.</p>
-            </div>
           ) : (
-            <JobTable 
+            <JobVisualizer 
               jobs={jobs}
               onCancel={(jobId) => cancelJobMutation.mutate(jobId)}
               onRetry={(jobId) => retryJobMutation.mutate(jobId)}
-              isLoading={cancelJobMutation.isPending || retryJobMutation.isPending}
             />
           )}
         </CardContent>

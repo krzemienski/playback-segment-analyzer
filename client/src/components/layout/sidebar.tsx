@@ -13,7 +13,8 @@ import {
   Moon,
   Sun,
   Home,
-  Activity
+  Activity,
+  TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const navigation = [
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Segments", href: "/segments", icon: Scissors },
   { name: "Jobs", href: "/jobs", icon: Briefcase },
+  { name: "Analytics", href: "/analytics", icon: TrendingUp },
   { name: "Monitoring", href: "/monitoring", icon: Activity },
 ];
 
