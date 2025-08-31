@@ -5,12 +5,22 @@ import { Badge } from "@/components/ui/badge";
 import { Video, Briefcase, Scissors, HardDrive, Server, Database, Activity } from "lucide-react";
 
 export default function Dashboard() {
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading } = useQuery<{
+    totalVideos: string;
+    videosThisMonth: string;
+    activeJobs: string;
+    processingJobs: string;
+    queuedJobs: string;
+    totalSegments: string;
+    avgSegmentsPerVideo: string;
+    storageUsed: string;
+    storagePercent: number;
+  }>({
     queryKey: ["/api/dashboard/stats"],
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
-  const { data: jobs } = useQuery({
+  const { data: jobs = [] } = useQuery<any[]>({
     queryKey: ["/api/jobs", { status: "processing", limit: 3 }],
     refetchInterval: 2000, // Refresh every 2 seconds for live jobs
   });
@@ -113,12 +123,12 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {jobs?.length === 0 && (
+              {jobs.length === 0 && (
                 <p className="text-muted-foreground text-center py-4">
                   No active processing jobs
                 </p>
               )}
-              {jobs?.map((job: any) => (
+              {jobs.map((job: any) => (
                 <div key={job.id} className="flex items-center justify-between p-4 bg-secondary rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">

@@ -104,15 +104,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      query = query.where(and(...conditions)) as any;
     }
 
-    query = query
+    return await query
       .orderBy(desc(videos.createdAt))
       .limit(options.limit || 20)
       .offset(options.offset || 0);
-
-    return await query;
   }
 
   async createVideo(insertVideo: InsertVideo): Promise<Video> {
@@ -183,7 +181,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      query = query.where(and(...conditions)) as any;
     }
 
     const result = await query
@@ -268,7 +266,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      query = query.where(and(...conditions)) as any;
     }
 
     return await query.orderBy(desc(systemMetrics.timestamp));

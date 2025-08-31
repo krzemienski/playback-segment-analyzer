@@ -9,12 +9,12 @@ import { Download, RotateCcw, Play } from "lucide-react";
 export default function Segments() {
   const { videoId } = useParams();
 
-  const { data: video, isLoading: videoLoading } = useQuery({
+  const { data: video, isLoading: videoLoading } = useQuery<any>({
     queryKey: ["/api/videos", videoId],
     enabled: !!videoId,
   });
 
-  const { data: scenes, isLoading: scenesLoading } = useQuery({
+  const { data: scenes = [], isLoading: scenesLoading } = useQuery<any[]>({
     queryKey: ["/api/videos", videoId, "scenes"],
     enabled: !!videoId,
   });
@@ -55,9 +55,9 @@ export default function Segments() {
               </h2>
               {video && (
                 <div className="flex items-center space-x-6 text-sm text-muted-foreground">
-                  <span>Duration: {video.duration || "Unknown"}</span>
-                  <span>Resolution: {video.resolution || "Unknown"}</span>
-                  <span>FPS: {video.fps || "Unknown"}</span>
+                  <span>Duration: {video.metadata?.duration ? `${video.metadata.duration}s` : "Unknown"}</span>
+                  <span>Resolution: {video.metadata?.resolution || "Unknown"}</span>
+                  <span>FPS: {video.metadata?.fps || "Unknown"}</span>
                   <span>Size: {video.fileSize ? `${(video.fileSize / (1024 * 1024 * 1024)).toFixed(1)} GB` : "Unknown"}</span>
                 </div>
               )}
@@ -86,7 +86,7 @@ export default function Segments() {
             </p>
           </CardContent>
         </Card>
-      ) : scenes?.length > 0 ? (
+      ) : scenes.length > 0 ? (
         <>
           {/* Video Timeline Scrubber */}
           <Card>
@@ -95,8 +95,13 @@ export default function Segments() {
             </CardHeader>
             <CardContent>
               <TimelineScrubber 
-                scenes={scenes} 
-                duration={parseFloat(video?.duration || "0")}
+                scenes={scenes.map((s: any) => ({
+                  id: s.id,
+                  startTime: String(s.startTime),
+                  endTime: String(s.endTime),
+                  confidence: String(s.confidence)
+                }))} 
+                duration={video?.metadata?.duration || 0}
               />
               <p className="text-sm text-muted-foreground mt-3 flex items-center">
                 <span className="inline-block w-2 h-2 bg-destructive rounded-full mr-2"></span>

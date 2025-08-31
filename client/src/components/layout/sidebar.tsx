@@ -11,17 +11,19 @@ import {
   Settings,
   ChevronLeft,
   Moon,
-  Sun
+  Sun,
+  Home,
+  Activity
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
+  { name: "Dashboard", href: "/", icon: Home },
   { name: "Videos", href: "/videos", icon: Video },
-  { name: "Jobs", href: "/jobs", icon: Briefcase },
-  { name: "Segments", href: "/segments", icon: Scissors },
   { name: "Upload", href: "/upload", icon: Upload },
-  { name: "Monitoring", href: "/monitoring", icon: BarChart3 },
+  { name: "Segments", href: "/segments", icon: Scissors },
+  { name: "Jobs", href: "/jobs", icon: Briefcase },
+  { name: "Monitoring", href: "/monitoring", icon: Activity },
 ];
 
 export default function Sidebar() {

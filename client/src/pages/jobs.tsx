@@ -10,7 +10,7 @@ export default function Jobs() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: jobs, isLoading } = useQuery({
+  const { data: jobs = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/jobs"],
     refetchInterval: 2000, // Refresh every 2 seconds for real-time updates
   });
@@ -77,7 +77,7 @@ export default function Jobs() {
                 </div>
               ))}
             </div>
-          ) : jobs?.length === 0 ? (
+          ) : jobs.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">No jobs found.</p>
             </div>

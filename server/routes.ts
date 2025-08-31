@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
 import { insertVideoSchema, insertJobSchema } from "@shared/schema";
-import { jobQueue } from "./services/job-queue";
+import { jobQueue, getWorkerStats } from "./services/job-queue";
 import { z } from "zod";
 
 const upload = multer({
@@ -259,7 +259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/metrics/workers', async (req, res) => {
     try {
-      const workerStats = await jobQueue.getWorkerStats();
+      const workerStats = await getWorkerStats();
       res.json(workerStats);
     } catch (error) {
       console.error('Error fetching worker stats:', error);

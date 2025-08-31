@@ -5,12 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Server, Database, Activity, Cpu, HardDrive, Wifi } from "lucide-react";
 
 export default function Monitoring() {
-  const { data: metrics } = useQuery({
+  const { data: metrics } = useQuery<{
+    cpu: number;
+    memory: number;
+    disk: number;
+    network: string;
+  }>({
     queryKey: ["/api/metrics/system"],
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
-  const { data: workers } = useQuery({
+  const { data: workers = [] } = useQuery<any[]>({
     queryKey: ["/api/metrics/workers"],
     refetchInterval: 3000, // Refresh every 3 seconds
   });
@@ -88,12 +93,12 @@ export default function Monitoring() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {workers?.length === 0 ? (
+              {workers.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">
                   No workers available
                 </p>
               ) : (
-                workers?.map((worker: any, index: number) => (
+                workers.map((worker: any, index: number) => (
                   <div 
                     key={worker.id || index} 
                     className={`flex items-center justify-between p-3 rounded-lg ${

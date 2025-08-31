@@ -10,7 +10,7 @@ export default function Videos() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
 
-  const { data: videos, isLoading } = useQuery({
+  const { data: videos = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/videos", { search, status: status === "all" ? undefined : status }],
     refetchInterval: 5000,
   });
@@ -45,7 +45,7 @@ export default function Videos() {
               </Select>
             </div>
             <div className="text-sm text-muted-foreground" data-testid="results-count">
-              {videos ? `Showing ${videos.length} videos` : "Loading..."}
+              {`Showing ${videos.length} videos`}
             </div>
           </div>
         </CardContent>
@@ -64,7 +64,7 @@ export default function Videos() {
             </Card>
           ))}
         </div>
-      ) : videos?.length === 0 ? (
+      ) : videos.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <p className="text-muted-foreground">No videos found.</p>
@@ -72,7 +72,7 @@ export default function Videos() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" data-testid="video-grid">
-          {videos?.map((video: any) => (
+          {videos.map((video: any) => (
             <VideoCard key={video.id} video={video} />
           ))}
         </div>

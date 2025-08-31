@@ -1,7 +1,7 @@
 import Queue from "bull";
 import { redis } from "./redis";
 import { storage } from "../storage";
-import { videoProcessor } from "./video-processor";
+import { videoProcessor } from "../services/video-processor";
 
 // Create job queue
 export const jobQueue = new Queue("video processing", {
@@ -92,17 +92,18 @@ jobQueue.on("progress", (job, progress) => {
 // Get worker statistics
 export async function getWorkerStats() {
   try {
-    const waiting = await jobQueue.waiting();
-    const active = await jobQueue.active();
-    const completed = await jobQueue.completed();
-    const failed = await jobQueue.failed();
+    const waiting = await jobQueue.getWaitingCount();
+    const active = await jobQueue.getActiveCount();
+    const completed = await jobQueue.getCompletedCount();
+    const failed = await jobQueue.getFailedCount();
+    const activeJobs = await jobQueue.getActive();
 
     return {
-      waiting: waiting.length,
-      active: active.length,
-      completed: completed.length,
-      failed: failed.length,
-      workers: active.map((job, index) => ({
+      waiting,
+      active,
+      completed,
+      failed,
+      workers: activeJobs.map((job: any, index: number) => ({
         id: `worker-${index + 1}`,
         status: "processing",
         jobId: job.id,

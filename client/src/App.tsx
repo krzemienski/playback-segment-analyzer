@@ -12,6 +12,7 @@ import Upload from "@/pages/upload";
 import Segments from "@/pages/segments";
 import Jobs from "@/pages/jobs";
 import Monitoring from "@/pages/monitoring";
+import Settings from "@/pages/settings";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/segments/:videoId?" component={Segments} />
       <Route path="/jobs" component={Jobs} />
       <Route path="/monitoring" component={Monitoring} />
+      <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );
