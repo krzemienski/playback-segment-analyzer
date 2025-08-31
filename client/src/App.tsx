@@ -14,6 +14,7 @@ import Jobs from "@/pages/jobs";
 import Monitoring from "@/pages/monitoring";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import TestApi from "@/pages/test-api";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/monitoring" component={Monitoring} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/settings" component={Settings} />
+      <Route path="/test-api" component={TestApi} />
       <Route component={NotFound} />
     </Switch>
   );

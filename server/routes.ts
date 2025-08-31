@@ -51,6 +51,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Inject broadcast function into job queue for real-time updates
   setBroadcast(broadcast);
 
+  // Health check endpoint for debugging
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      headers: req.headers,
+      url: req.url
+    });
+  });
+
   // Dashboard stats
   app.get('/api/dashboard/stats', async (req, res) => {
     try {
